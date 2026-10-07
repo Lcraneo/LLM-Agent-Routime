@@ -1,0 +1,769 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>微信大模型机器人</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17202a;
+      --muted: #5c6b7a;
+      --line: #d7dee6;
+      --accent: #0a7d52;
+      --accent-strong: #086b46;
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+    header {
+      height: 56px;
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 20px;
+    }
+    h2 {
+      margin: 0 0 16px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+    button, input, select {
+      height: 38px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      font-size: 14px;
+      padding: 0 12px;
+    }
+    button {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button.secondary {
+      background: white;
+      color: var(--accent-strong);
+    }
+    button:hover { background: var(--accent-strong); }
+    button.secondary:hover { background: #eef6f2; }
+    .stack { display: grid; gap: 10px; }
+    .row { display: flex; gap: 10px; align-items: center; }
+    input, select { flex: 1; min-width: 0; }
+    .result-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 12px;
+    }
+    .result-grid img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: contain;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #eef1f4;
+    }
+    .qr {
+      width: 220px;
+      height: 220px;
+      margin: 14px auto;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .qr img { width: 100%; height: 100%; object-fit: contain; }
+    .status {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .status strong { color: var(--ink); font-weight: 600; }
+    .message {
+      padding: 12px 0;
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .message:last-child { border-bottom: 0; }
+    .message small { display: block; color: var(--muted); margin-top: 4px; }
+    .empty {
+      color: var(--muted);
+      font-size: 14px;
+      margin: 0;
+    }
+    textarea {
+      width: 100%;
+      min-height: 84px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font: inherit;
+      color: inherit;
+      padding: 10px 12px;
+      background: white;
+    }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 0;
+      font: inherit;
+      line-height: 1.5;
+      color: var(--ink);
+    }
+    audio {
+      width: 100%;
+      height: 38px;
+    }
+    .wide-row {
+      display: grid;
+      grid-template-columns: 1fr 130px;
+      gap: 10px;
+    }
+    @media (max-width: 720px) {
+      main { grid-template-columns: 1fr; padding: 16px; }
+      header { padding: 0 16px; }
+    }
+  </style>
+</head>
+<body>
+  <header>微信大模型机器人</header>
+  <main>
+    <section>
+      <h2>登录</h2>
+      <div class="stack">
+        <div class="row">
+          <input id="sessionId" value="default" placeholder="会话 ID（多用户隔离）">
+          <button class="secondary" id="useSession" type="button">切换</button>
+        </div>
+        <button id="login" type="button">开始扫码登录</button>
+        <div class="qr" id="qr"><span>尚未获取二维码</span></div>
+        <div class="status" id="status">加载状态中...</div>
+        <label class="row">
+          <input id="autoReply" type="checkbox">
+          LLM 自动回复
+        </label>
+        <div>
+          <strong style="font-size:13px;color:var(--muted)">所有会话</strong>
+          <div id="sessions" class="status" style="margin-top:6px"></div>
+        </div>
+      </div>
+    </section>
+    <section>
+      <h2>消息</h2>
+      <div class="row" style="margin-bottom: 16px;">
+        <button class="secondary" id="poll" type="button">立即拉取</button>
+        <button class="secondary" id="refresh" type="button">刷新列表</button>
+      </div>
+      <div id="messages"><p class="empty">还没有收到消息。</p></div>
+    </section>
+    <section>
+      <h2>图片生成</h2>
+      <div class="stack">
+        <input id="imagePrompt" placeholder="输入画面描述">
+        <div class="row">
+          <select id="imageSize">
+            <option value="1024*1024">1:1</option>
+            <option value="1104*1472">3:4</option>
+            <option value="1472*1104">4:3</option>
+            <option value="960*1696">9:16</option>
+            <option value="1696*960">16:9</option>
+          </select>
+          <select id="imageCount" aria-label="生成数量">
+            <option value="1">1 张</option>
+            <option value="2">2 张</option>
+            <option value="3">3 张</option>
+            <option value="4">4 张</option>
+          </select>
+        </div>
+        <input id="negativePrompt" placeholder="不希望出现的内容（反向提示词）">
+        <label class="row">
+          <input id="watermark" type="checkbox" style="flex: 0 0 auto;">
+          添加水印
+        </label>
+        <button id="generateImage" type="button">生成图片</button>
+        <div id="imageResults"><p class="empty">还没有生成图片。</p></div>
+      </div>
+    </section>
+    <section>
+      <h2>语音</h2>
+      <div class="stack">
+        <div class="row">
+          <button id="recordVoice" type="button">开始录音</button>
+          <button id="stopVoice" type="button" class="secondary" disabled>停止录音</button>
+        </div>
+        <textarea id="asrResult" placeholder="识别结果" readonly></textarea>
+        <div class="wide-row">
+          <input id="ttsText" placeholder="输入要合成的文字">
+          <select id="ttsFormat" aria-label="音频格式">
+            <option value="wav">WAV</option>
+            <option value="mp3">MP3</option>
+            <option value="opus">OPUS</option>
+            <option value="pcm">PCM</option>
+          </select>
+        </div>
+        <button id="tts" type="button">播放语音</button>
+        <audio id="ttsAudio" controls hidden></audio>
+      </div>
+    </section>
+    <section>
+      <h2>天气</h2>
+      <div class="stack">
+        <div class="row">
+          <input id="weatherLocation" value="beijing" placeholder="城市名或 lat:lon">
+          <button id="weatherNow" type="button">实时天气</button>
+        </div>
+        <div class="row">
+          <select id="weatherDays" aria-label="预报天数">
+            <option value="3">3 天</option>
+            <option value="5">5 天</option>
+            <option value="7">7 天</option>
+          </select>
+          <button id="weatherDaily" type="button">未来预报</button>
+        </div>
+        <pre id="weatherResult">还没有天气数据。</pre>
+      </div>
+    </section>
+    <section>
+      <h2>意图识别</h2>
+      <div class="stack">
+        <input id="intentText" placeholder="输入用户消息">
+        <button id="classifyIntent" type="button">识别意图</button>
+        <div id="intentResult" class="empty">还没有识别结果。</div>
+      </div>
+    </section>
+    <section>
+      <h2>多轮对话</h2>
+      <div class="stack">
+        <div class="row">
+          <input id="sessionId" value="demo" placeholder="会话 ID">
+          <button id="clearConversation" type="button" class="secondary">清空</button>
+        </div>
+        <textarea id="conversationInput" placeholder="输入带上下文记忆的消息"></textarea>
+        <button id="conversationSend" type="button">发送（含上下文）</button>
+        <pre id="conversationResult">还没有对话记录。</pre>
+      </div>
+    </section>
+    <section>
+      <h2>旅行规划 Agent</h2>
+      <div class="stack">
+        <input id="travelGoal" placeholder="一句话目标，例如：做一份北京三日游 / 成都+重庆双城 / 西安+华山5日 完整出行方案">
+        <button id="travelPlan" type="button">自主规划</button>
+        <div id="travelTools" class="status" style="margin:6px 0"></div>
+        <pre id="travelResult">还没有出行手册。</pre>
+      </div>
+    </section>
+    <section>
+      <h2>主动发送</h2>
+      <div class="stack">
+        <input id="toUserId" placeholder="toUserId，例如 xxx@im.wechat">
+        <input id="text" placeholder="文字消息">
+        <button id="send" type="button">发送文字</button>
+      </div>
+    </section>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    // 当前操作的用户会话 ID，多用户各自隔离；所有 wechat 接口都带上它。
+    let currentSession = $("sessionId").value.trim() || "default";
+    // 拼接带 sessionId 的 wechat 接口地址。
+    const wechat = (path) => `/api/wechat/${encodeURIComponent(currentSession)}${path}`;
+
+    async function request(url, options) {
+      const response = await fetch(url, options);
+      const contentType = response.headers.get("content-type") || "";
+      const body = contentType.includes("application/json") ? await response.json() : await response.text();
+      if (!response.ok) {
+        const message =
+          typeof body === "object" && body && (body.error || body.message)
+            ? body.error || body.message
+            : body || response.statusText;
+        throw new Error(message);
+      }
+      return body;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#39;"
+      }[c]));
+    }
+
+    const voiceState = {
+      audioContext: null,
+      source: null,
+      processor: null,
+      stream: null,
+      chunks: [],
+      recording: false
+    };
+
+    function writeString(view, offset, text) {
+      for (let i = 0; i < text.length; i++) {
+        view.setUint8(offset + i, text.charCodeAt(i));
+      }
+    }
+
+    function encodeWav(samples, sampleRate) {
+      const buffer = new ArrayBuffer(44 + samples.length * 2);
+      const view = new DataView(buffer);
+      writeString(view, 0, "RIFF");
+      view.setUint32(4, 36 + samples.length * 2, true);
+      writeString(view, 8, "WAVE");
+      writeString(view, 12, "fmt ");
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeString(view, 36, "data");
+      view.setUint32(40, samples.length * 2, true);
+      for (let i = 0; i < samples.length; i++) {
+        const sample = Math.max(-1, Math.min(1, samples[i]));
+        view.setInt16(44 + i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      }
+      return new Uint8Array(buffer);
+    }
+
+    async function startRecording() {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !AudioContextClass) {
+        throw new Error("当前浏览器不支持录音");
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioContext = new AudioContextClass();
+      const source = audioContext.createMediaStreamSource(stream);
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+      const gain = audioContext.createGain();
+      gain.gain.value = 0;
+      voiceState.chunks = [];
+      processor.onaudioprocess = (event) => {
+        voiceState.chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+      };
+      source.connect(processor);
+      processor.connect(gain);
+      gain.connect(audioContext.destination);
+      voiceState.audioContext = audioContext;
+      voiceState.source = source;
+      voiceState.processor = processor;
+      voiceState.stream = stream;
+      voiceState.recording = true;
+    }
+
+    function stopRecording() {
+      const state = voiceState;
+      if (!state.recording || !state.audioContext) {
+        return null;
+      }
+      try {
+        if (state.source) state.source.disconnect();
+        if (state.processor) state.processor.disconnect();
+        if (state.stream) state.stream.getTracks().forEach((track) => track.stop());
+        if (state.audioContext.state !== "closed") state.audioContext.close();
+      } finally {
+        state.recording = false;
+      }
+      if (!state.chunks.length) {
+        return null;
+      }
+      const sourceRate = state.audioContext.sampleRate || 48000;
+      const targetRate = 16000;
+      const totalSamples = state.chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+      const combined = new Float32Array(totalSamples);
+      let offset = 0;
+      for (const chunk of state.chunks) {
+        combined.set(chunk, offset);
+        offset += chunk.length;
+      }
+      const outputLength = Math.max(1, Math.round((totalSamples * targetRate) / sourceRate));
+      const pcm = new Int16Array(outputLength);
+      for (let i = 0; i < outputLength; i++) {
+        const sourceIndex = Math.min(
+          combined.length - 1,
+          Math.floor((i * sourceRate) / targetRate)
+        );
+        const sample = Math.max(-1, Math.min(1, combined[sourceIndex]));
+        pcm[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+      }
+      return new Blob([encodeWav(pcm, targetRate)], { type: "audio/wav" });
+    }
+
+    async function transcribeBlob(blob) {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+      });
+      const audioBase64 = dataUrl.split(",")[1];
+      $("asrResult").value = "识别中...";
+      try {
+        const result = await request("/api/voice/asr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ audioBase64, mimeType: "audio/wav" })
+        });
+        $("asrResult").value = result.text;
+        $("ttsText").value = result.text;
+      } catch (error) {
+        $("asrResult").value = error.message;
+      }
+    }
+
+    async function loadStatus() {
+      try {
+        const status = await request(wechat("/status"));
+        $("status").innerHTML = `
+          <div>会话: <strong>${escapeHtml(currentSession)}</strong></div>
+          <div>登录状态: <strong>${status.loggedIn ? "已登录" : "未登录"}</strong></div>
+          <div>机器人 ID: <strong>${status.botId || "-"}</strong></div>
+          <div>连接状态: <strong>${status.connectionStatus || "-"}</strong></div>
+          <div>登录阶段: <strong>${status.loginStatus || "-"}</strong></div>
+          <div>已收消息: <strong>${status.receivedMessageCount}</strong></div>
+          ${status.message ? `<div>${escapeHtml(status.message)}</div>` : ""}
+        `;
+        $("autoReply").checked = status.autoReply;
+        if (status.loggedIn) {
+          $("qr").innerHTML = `<strong>已登录</strong>`;
+        } else if (status.qrCodeContent) {
+          $("qr").innerHTML = `<img src="${wechat("/qrcode")}?ts=${Date.now()}" alt="微信登录二维码">`;
+        } else {
+          $("qr").innerHTML = `<span>尚未获取二维码</span>`;
+        }
+      } catch (error) {
+        $("status").textContent = error.message;
+      }
+    }
+
+    async function loadSessions() {
+      try {
+        const sessions = await request("/api/wechat/sessions");
+        $("sessions").innerHTML = sessions.length
+          ? sessions
+              .map(
+                (s) =>
+                  `<div>${escapeHtml(s.sessionId)}: <strong>${s.loggedIn ? "已登录" : "未登录"}</strong> · ${escapeHtml(s.connectionStatus || "-")} · 消息 ${s.receivedMessageCount}</div>`
+              )
+              .join("")
+          : `<div>暂无会话</div>`;
+      } catch (error) {
+        $("sessions").textContent = error.message;
+      }
+    }
+
+    async function loadMessages() {
+      try {
+        const messages = (await request(wechat("/messages"))).filter(
+          (m) => !String(m.fromUserId || "").endsWith("@im.bot")
+        );
+        const container = $("messages");
+        if (!messages.length) {
+          container.innerHTML = `<p class="empty">还没有收到消息。</p>`;
+          return;
+        }
+        container.innerHTML = messages
+          .slice()
+          .reverse()
+          .map(
+            (m) => `
+              <div class="message">
+                <div><strong>${escapeHtml(m.type)}</strong>: ${escapeHtml(m.text || m.description || "-")}</div>
+                <small>来自 ${escapeHtml(m.fromUserId || "-")} · ${new Date(m.receivedAtMs).toLocaleString()}</small>
+              </div>
+            `
+          )
+          .join("");
+      } catch (error) {
+        $("messages").innerHTML = `<p class="empty">${error.message}</p>`;
+      }
+    }
+
+    $("login").addEventListener("click", async () => {
+      try {
+        await request(wechat("/login"), { method: "POST" });
+        // 后端在线程池里申请二维码，立即返回；前端轮询几次直到二维码就绪。
+        for (let i = 0; i < 10; i++) {
+          await new Promise((r) => setTimeout(r, 600));
+          await loadStatus();
+          const status = await request(wechat("/status"));
+          if (status.loggedIn || status.qrCodeContent) break;
+        }
+        await loadSessions();
+      } catch (error) {
+        $("status").textContent = error.message;
+      }
+    });
+
+    $("useSession").addEventListener("click", () => {
+      currentSession = $("sessionId").value.trim() || "default";
+      loadStatus();
+      loadMessages();
+    });
+
+    $("poll").addEventListener("click", async () => {
+      try {
+        await request(wechat("/poll"), { method: "POST" });
+        await loadMessages();
+        await loadStatus();
+      } catch (error) {
+        $("status").textContent = error.message;
+      }
+    });
+
+    $("refresh").addEventListener("click", loadMessages);
+
+    $("generateImage").addEventListener("click", async () => {
+      const prompt = $("imagePrompt").value.trim();
+      if (!prompt) {
+        $("imageResults").innerHTML = `<p class="empty">请输入画面描述。</p>`;
+        return;
+      }
+      const button = $("generateImage");
+      button.disabled = true;
+      button.textContent = "生成中...";
+      $("imageResults").innerHTML =
+        `<p class="empty">正在生成，大约需要十几秒...</p>`;
+      try {
+        const result = await request("/api/llm/generate-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt,
+            negativePrompt: $("negativePrompt").value.trim() || null,
+            size: $("imageSize").value,
+            n: Number($("imageCount").value),
+            watermark: $("watermark").checked
+          })
+        });
+        const urls = result.imageUrls || [];
+        if (!urls.length) {
+          throw new Error("没有返回图片地址");
+        }
+        $("imageResults").innerHTML = `<div class="result-grid">${urls
+          .map((url) => `<img src="${escapeHtml(url)}" alt="生成的图片">`)
+          .join("")}</div>`;
+      } catch (error) {
+        $("imageResults").innerHTML =
+          `<p class="empty">${escapeHtml(error.message)}</p>`;
+      } finally {
+        button.disabled = false;
+        button.textContent = "生成图片";
+      }
+    });
+
+    $("recordVoice").addEventListener("click", async () => {
+      try {
+        await startRecording();
+        $("recordVoice").disabled = true;
+        $("stopVoice").disabled = false;
+      } catch (error) {
+        $("asrResult").value = error.message;
+      }
+    });
+
+    $("stopVoice").addEventListener("click", () => {
+      const blob = stopRecording();
+      $("recordVoice").disabled = false;
+      $("stopVoice").disabled = true;
+      if (blob) {
+        transcribeBlob(blob);
+      }
+    });
+
+    $("tts").addEventListener("click", async () => {
+      const text = $("ttsText").value.trim();
+      if (!text) {
+        return;
+      }
+      $("tts").textContent = "合成中...";
+      try {
+        const result = await request("/api/voice/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, format: $("ttsFormat").value })
+        });
+        const audio = $("ttsAudio");
+        audio.hidden = false;
+        audio.src = `data:${result.contentType};base64,${result.audioBase64}`;
+        await audio.play();
+      } catch (error) {
+        $("ttsAudio").hidden = true;
+        $("asrResult").value = error.message;
+      } finally {
+        $("tts").textContent = "播放语音";
+      }
+    });
+
+    async function loadWeatherNow() {
+      const location = $("weatherLocation").value.trim();
+      if (!location) return;
+      $("weatherResult").textContent = "加载中...";
+      try {
+        const result = await request(`/api/weather/now/formatted?location=${encodeURIComponent(location)}`);
+        $("weatherResult").textContent = result.text;
+      } catch (error) {
+        $("weatherResult").textContent = error.message;
+      }
+    }
+
+    async function loadWeatherDaily() {
+      const location = $("weatherLocation").value.trim();
+      if (!location) return;
+      $("weatherResult").textContent = "加载中...";
+      try {
+        const result = await request(
+          `/api/weather/daily/formatted?location=${encodeURIComponent(location)}&days=${$("weatherDays").value}`
+        );
+        $("weatherResult").textContent = result.text;
+      } catch (error) {
+        $("weatherResult").textContent = error.message;
+      }
+    }
+
+    $("weatherNow").addEventListener("click", loadWeatherNow);
+    $("weatherDaily").addEventListener("click", loadWeatherDaily);
+
+    $("classifyIntent").addEventListener("click", async () => {
+      const text = $("intentText").value.trim();
+      if (!text) return;
+      try {
+        const result = await request("/api/intent/classify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, source: "text" })
+        });
+        $("intentResult").textContent =
+          `${result.intent}（置信度 ${Math.round(result.confidence * 100)}%）`;
+      } catch (error) {
+        $("intentResult").textContent = error.message;
+      }
+    });
+
+    $("conversationSend").addEventListener("click", async () => {
+      const message = $("conversationInput").value.trim();
+      if (!message) return;
+      try {
+        const result = await request("/api/conversation/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: $("sessionId").value.trim() || "demo",
+            message
+          })
+        });
+        $("conversationResult").textContent =
+          `AI: ${result.reply}\n\n历史消息: ${result.totalMessages} 条\n摘要: ${result.summary || "-"}`;
+        $("conversationInput").value = "";
+      } catch (error) {
+        $("conversationResult").textContent = error.message;
+      }
+    });
+
+    $("clearConversation").addEventListener("click", async () => {
+      try {
+        await fetch(
+          `/api/conversation/history?sessionId=${encodeURIComponent($("sessionId").value.trim() || "demo")}`,
+          { method: "DELETE" }
+        );
+        $("conversationResult").textContent = "已清空对话记录。";
+      } catch (error) {
+        $("conversationResult").textContent = error.message;
+      }
+    });
+
+    $("send").addEventListener("click", async () => {
+      try {
+        await request(wechat("/send"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            toUserId: $("toUserId").value.trim(),
+            text: $("text").value.trim()
+          })
+        });
+        $("text").value = "";
+      } catch (error) {
+        $("status").textContent = error.message;
+      }
+    });
+
+    $("autoReply").addEventListener("change", async () => {
+      try {
+        await request(wechat(`/auto-reply/${$("autoReply").checked}`), { method: "PUT" });
+        await loadStatus();
+      } catch (error) {
+        $("status").textContent = error.message;
+      }
+    });
+
+    $("travelPlan").addEventListener("click", async () => {
+      const goal = $("travelGoal").value.trim();
+      if (!goal) {
+        $("travelResult").textContent = "请输入一句话目标。";
+        return;
+      }
+      const btn = $("travelPlan");
+      btn.disabled = true;
+      btn.textContent = "Agent 规划中...";
+      $("travelTools").textContent = "";
+      $("travelResult").textContent = "Agent 自主拆解中，调用多工具生成手册，约需几十秒...";
+      try {
+        const result = await request("/api/travel/plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ goal })
+        });
+        $("travelTools").textContent =
+          "调用工具链: " + (result.calledTools || []).join(" → ");
+        $("travelResult").textContent = result.handbook || "(空)";
+      } catch (error) {
+        $("travelResult").textContent = error.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "自主规划";
+      }
+    });
+
+    loadStatus();
+    loadMessages();
+    loadSessions();
+  </script>
+</body>
+</html>
